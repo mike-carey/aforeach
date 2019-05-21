@@ -6,8 +6,13 @@ package foobar
 
 import "sync"
 
-func ForEachFooToBar(these []Foo, do func(Foo) (Bar, error)) ([]Bar, []error) {
-	pool := make([]Bar, 0)
+type Result struct {
+	Key    *Baz
+	Values []Bar
+}
+
+func MapOneBazToManyBar(these []Baz, do func(Baz) ([]Bar, error)) (map[*Baz][]Bar, []error) {
+	pool := make(map[*Baz][]Bar, 0)
 	errs := make([]error, 0)
 
 	if len(these) > 0 {
@@ -15,17 +20,20 @@ func ForEachFooToBar(these []Foo, do func(Foo) (Bar, error)) ([]Bar, []error) {
 
 		wg.Add(len(these))
 
-		poolCh := make(chan Bar, len(these))
+		poolCh := make(chan Result, len(these))
 		errsCh := make(chan error, len(these))
 		for _, this := range these {
-			go func(this Foo) {
+			go func(this Baz) {
 				defer wg.Done()
 
 				t, e := do(this)
 				if e != nil {
 					errsCh <- e
 				} else {
-					poolCh <- t
+					poolCh <- Result{
+						Key:    &this,
+						Values: t,
+					}
 				}
 			}(this)
 		}
@@ -35,7 +43,7 @@ func ForEachFooToBar(these []Foo, do func(Foo) (Bar, error)) ([]Bar, []error) {
 		for _ = range these {
 			select {
 			case this := <-poolCh:
-				pool = append(pool, this)
+				pool[this.Key] = this.Values
 			case err := <-errsCh:
 				errs = append(errs, err)
 			}
